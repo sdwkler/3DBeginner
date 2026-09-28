@@ -54,6 +54,7 @@ public class RoomCycle : MonoBehaviour
     {
         if (Instance == this)
             Instance = null;
+        RoundBegan = null;
     }
 
     void Start()

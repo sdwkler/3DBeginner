@@ -30,7 +30,10 @@ public class TeleportMosaic : MonoBehaviour
     void OnDestroy()
     {
         if (Instance == this)
+        {
             Instance = null;
+            IsBusy = false;
+        }
         if (m_Material != null)
             Destroy(m_Material);
     }

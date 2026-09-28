@@ -141,7 +141,6 @@ public class GhostDirector : MonoBehaviour
     {
         string[] flicker = { FlickerSomeId, FlickerAllId, FlickerDieId };
         string[] color = { ColorSomeId, ColorNearId };
-        string[] lamps = { LampShowerId, LampMonsterId };
         string[] gargoyles = { GargoyleGarbledId, GargoyleCatchId };
         string[] chairs = { ChairPileId, ChairHuntId, ChairFloatId };
         string[] walkers = { WalkerRepeatId, WalkerPlayerId, WalkerBackId, WalkerTailId };
@@ -161,8 +160,7 @@ public class GhostDirector : MonoBehaviour
             Entry(FlickerDieId, 3, string.Empty, Except(FlickerDieId, flicker), new string[0]),
             Entry(ColorSomeId, 1, string.Empty, Except(ColorSomeId, color), new string[0]),
             Entry(ColorNearId, 2, string.Empty, Except(ColorNearId, color), new string[0]),
-            Entry(LampShowerId, 1, string.Empty, Except(LampShowerId, lamps), new string[0]),
-            Entry(LampMonsterId, 2, string.Empty, Except(LampMonsterId, lamps), new string[0]),
+            Entry(LampShowerId, 1, string.Empty, new string[0], new string[0]),
             Entry(MonsterRedId, 1, string.Empty, new string[0], new string[0]),
             Entry(GargoyleGarbledId, 1, string.Empty, Except(GargoyleGarbledId, gargoyles), new string[0]),
             Entry(GargoyleCatchId, 2, string.Empty, Except(GargoyleCatchId, gargoyles), new string[0]),

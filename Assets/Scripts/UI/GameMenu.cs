@@ -12,6 +12,7 @@ public class GameMenu : MonoBehaviour
     PlayerMovement m_Player;
     bool m_DialogOpen;
     bool m_VictoryOpen;
+    bool m_Returning;
     float m_VictoryTimer;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -107,6 +108,10 @@ public class GameMenu : MonoBehaviour
 
     public void ReturnToStart()
     {
+        if (m_Returning)
+            return;
+
+        m_Returning = true;
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }

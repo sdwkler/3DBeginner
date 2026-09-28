@@ -31,7 +31,7 @@ public class HouseLights : MonoBehaviour
         public bool dead;
         public float burstLeft;
         public bool tinted;
-        public bool normalWhenNear;
+        public bool oddWhenNear;
         public Color anomalyColor;
         public GameObject replacement;
         public Light replacementLight;
@@ -40,6 +40,9 @@ public class HouseLights : MonoBehaviour
 
     readonly List<Fixture> m_Eligible = new List<Fixture>();
     bool m_Collected;
+
+    static readonly int ColorId = Shader.PropertyToID("_Color");
+    static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
 
     public void Apply(AnomalyRoll roll)
     {
@@ -55,9 +58,7 @@ public class HouseLights : MonoBehaviour
                 pool.Add(m_Eligible[i]);
         }
         if (roll.Contains(GhostDirector.LampShowerId))
-            ReplaceSome(pool, true);
-        if (roll.Contains(GhostDirector.LampMonsterId))
-            ReplaceSome(pool, false);
+            ReplaceSome(pool);
 
         if (roll.Contains(GhostDirector.FlickerDieId))
             ArmExtinguish(pool);
@@ -93,14 +94,14 @@ public class HouseLights : MonoBehaviour
 
         if (fixture.tinted)
         {
-            Color color = fixture.anomalyColor;
-            if (fixture.normalWhenNear && near)
-                color = fixture.color;
+            bool green = !fixture.oddWhenNear || near;
+            Color color = green ? fixture.anomalyColor : fixture.color;
             fixture.light.color = color;
             if (fixture.light.enabled)
                 fixture.light.intensity = fixture.intensity;
             if (fixture.replacementLight != null)
                 fixture.replacementLight.color = color;
+            PaintSurfaces(fixture, green);
         }
 
         if (fixture.extinguish && !fixture.bursting && near)
@@ -162,11 +163,15 @@ public class HouseLights : MonoBehaviour
             Transform root = FixtureRoot(light.transform);
             if (root == null || !seen.Add(root))
                 continue;
+
+            bool monster = IsMonsterLamp(root);
+            if (!monster && !IsWallLamp(light.transform))
+                continue;
             if (IsCandle(root) || OnJudgmentApproach(root.position))
                 continue;
 
             Fixture fixture = new Fixture();
-            fixture.monster = IsMonsterLamp(root);
+            fixture.monster = monster;
             fixture.light = light;
             fixture.root = root;
             fixture.color = light.color;
@@ -205,8 +210,10 @@ public class HouseLights : MonoBehaviour
             {
                 for (int r = 0; r < fixture.renderers.Length; r++)
                 {
-                    if (fixture.renderers[r] != null)
-                        fixture.renderers[r].enabled = fixture.rendererWasEnabled[r];
+                    if (fixture.renderers[r] == null)
+                        continue;
+                    fixture.renderers[r].enabled = fixture.rendererWasEnabled[r];
+                    fixture.renderers[r].SetPropertyBlock(null);
                 }
             }
 
@@ -224,23 +231,30 @@ public class HouseLights : MonoBehaviour
             fixture.bursting = false;
             fixture.dead = false;
             fixture.tinted = false;
-            fixture.normalWhenNear = false;
+            fixture.oddWhenNear = false;
         }
     }
 
     void TintMonsters()
     {
+        var monsters = new List<Fixture>();
         for (int i = 0; i < m_Eligible.Count; i++)
         {
-            Fixture fixture = m_Eligible[i];
-            if (!fixture.monster || fixture.light == null)
-                continue;
+            if (m_Eligible[i].monster && m_Eligible[i].light != null)
+                monsters.Add(m_Eligible[i]);
+        }
 
+        List<Fixture> chosen = Some(monsters);
+        for (int i = 0; i < chosen.Count; i++)
+        {
+            Fixture fixture = chosen[i];
             fixture.tinted = true;
-            fixture.normalWhenNear = false;
+            fixture.oddWhenNear = false;
             fixture.anomalyColor = GreenLike(fixture.color);
             fixture.light.color = fixture.anomalyColor;
             fixture.light.intensity = fixture.intensity;
+            HoldScript(fixture);
+            PaintSurfaces(fixture, true);
         }
     }
 
@@ -250,6 +264,19 @@ public class HouseLights : MonoBehaviour
         if (glow < 0.05f)
             glow = 1f;
         return new Color(0.22f * glow, glow, 0.28f * glow, original.a);
+    }
+
+    static bool IsWallLamp(Transform node)
+    {
+        Transform cursor = node;
+        while (cursor != null)
+        {
+            if (cursor.Find("WallLampGlass") != null)
+                return true;
+            cursor = cursor.parent;
+        }
+
+        return false;
     }
 
     static bool IsCandle(Transform root)
@@ -327,18 +354,50 @@ public class HouseLights : MonoBehaviour
                 continue;
 
             fixture.tinted = true;
-            fixture.normalWhenNear = allEerie;
+            fixture.oddWhenNear = allEerie;
             fixture.anomalyColor = GreenLike(fixture.color);
-            fixture.light.color = fixture.anomalyColor;
+            fixture.light.color = allEerie ? fixture.color : fixture.anomalyColor;
             fixture.light.intensity = fixture.intensity;
             HoldScript(fixture);
+            PaintSurfaces(fixture, !allEerie);
         }
     }
 
-    void ReplaceSome(List<Fixture> pool, bool shower)
+    static void PaintSurfaces(Fixture fixture, bool green)
     {
-        GameObject prefab = shower ? showerPrefab : monsterLampPrefab;
-        if (prefab == null)
+        if (fixture.renderers == null)
+            return;
+
+        Color glow = green ? fixture.anomalyColor : fixture.color;
+        for (int i = 0; i < fixture.renderers.Length; i++)
+        {
+            Renderer renderer = fixture.renderers[i];
+            if (renderer == null || (!fixture.monster && IsBody(renderer)))
+                continue;
+
+            if (!green)
+            {
+                renderer.SetPropertyBlock(null);
+                continue;
+            }
+
+            MaterialPropertyBlock block = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(block);
+            block.SetColor(ColorId, glow);
+            block.SetColor(EmissionId, glow);
+            renderer.SetPropertyBlock(block);
+        }
+    }
+
+    static bool IsBody(Renderer renderer)
+    {
+        string name = renderer.gameObject.name;
+        return name == "WallLight";
+    }
+
+    void ReplaceSome(List<Fixture> pool)
+    {
+        if (showerPrefab == null)
             return;
 
         List<Fixture> chosen = Some(pool);
@@ -347,29 +406,53 @@ public class HouseLights : MonoBehaviour
             Fixture fixture = chosen[i];
             pool.Remove(fixture);
             HideFixture(fixture);
-            GameObject copy = Instantiate(prefab, fixture.root);
-            copy.transform.localPosition = shower ? new Vector3(0f, -0.15f, 0.05f) : Vector3.zero;
-            copy.transform.localRotation = shower ? Quaternion.Euler(90f, 0f, 0f) : Quaternion.identity;
-            copy.transform.localScale = shower ? Vector3.one * 0.45f : Vector3.one * 0.85f;
+            GameObject copy = Spawn(showerPrefab, fixture.root);
+            if (copy == null)
+                continue;
+            copy.transform.localPosition = new Vector3(0f, -0.35f, 0.2f);
+            copy.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            copy.transform.localScale = Vector3.one * 1.45f;
             Collider[] colliders = copy.GetComponentsInChildren<Collider>(true);
             for (int c = 0; c < colliders.Length; c++)
                 colliders[c].enabled = false;
             fixture.replacement = copy;
-
-            if (!shower)
-            {
-                Light lamp = copy.GetComponentInChildren<Light>();
-                if (lamp == null)
-                    lamp = copy.AddComponent<Light>();
-                lamp.type = LightType.Point;
-                lamp.range = 6.5f;
-                lamp.intensity = 1.7f;
-                lamp.color = new Color(0.55f, 0.75f, 0.45f);
-                fixture.replacementLight = lamp;
-                fixture.varyFlicker = true;
-                fixture.interval = Random.Range(0.08f, 0.34f);
-            }
+            PlaySpray(copy);
         }
+    }
+
+    static void PlaySpray(GameObject copy)
+    {
+        ParticleSystem[] sprays = copy.GetComponentsInChildren<ParticleSystem>(true);
+        for (int i = 0; i < sprays.Length; i++)
+        {
+            ParticleSystem spray = sprays[i];
+            if (spray == null)
+                continue;
+
+            spray.gameObject.SetActive(true);
+            ParticleSystem.EmissionModule emission = spray.emission;
+            emission.enabled = true;
+            ParticleSystemRenderer renderer = spray.GetComponent<ParticleSystemRenderer>();
+            if (renderer != null)
+                renderer.enabled = true;
+            spray.Clear(true);
+            spray.Play(true);
+        }
+    }
+
+    static GameObject Spawn(GameObject source, Transform parent)
+    {
+        Object clone = Instantiate((Object)source, parent);
+        GameObject copy = clone as GameObject;
+        if (copy == null)
+        {
+            Component piece = clone as Component;
+            copy = piece != null ? piece.gameObject : null;
+        }
+
+        if (copy == null && clone != null)
+            Destroy(clone);
+        return copy;
     }
 
     static void HideFixture(Fixture fixture)

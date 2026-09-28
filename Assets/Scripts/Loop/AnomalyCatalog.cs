@@ -80,7 +80,7 @@ public class AnomalyCatalog : MonoBehaviour
         var picked = new System.Collections.Generic.List<AnomalyClass>();
         for (int guard = 0; guard < 6 && budget > 0; guard++)
         {
-            var pool = Candidates(budget, picked, NeedFresh(picked, stage), stage);
+            var pool = Candidates(budget, picked, true, stage);
             if (pool.Count == 0)
                 pool = Candidates(budget, picked, false, stage);
             if (pool.Count == 0)
@@ -167,13 +167,6 @@ public class AnomalyCatalog : MonoBehaviour
         if (finalFloor)
             high = 1f;
         return Mathf.Lerp(0.45f, 3.6f, high);
-    }
-
-    bool NeedFresh(System.Collections.Generic.List<AnomalyClass> picked, int stage)
-    {
-        if (HasFresh(picked) || !AnyUnseen(stage))
-            return false;
-        return true;
     }
 
     bool AnyUnseen(int stage)

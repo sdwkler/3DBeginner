@@ -12,6 +12,7 @@ public class HouseChairs : MonoBehaviour
         public Vector3 position;
         public Quaternion rotation;
         public bool hunter;
+        public bool floater;
         public Rigidbody body;
         public bool bodyWasOurs;
         public ChairStalker stalker;
@@ -19,8 +20,14 @@ public class HouseChairs : MonoBehaviour
     }
 
     readonly List<Seat> m_Seats = new List<Seat>();
-    GameObject m_Pile;
+    Transform m_Desk;
+    Transform m_Flow;
     bool m_Collected;
+
+    void Awake()
+    {
+        Collect();
+    }
 
     public void Apply(AnomalyRoll roll)
     {
@@ -31,7 +38,7 @@ public class HouseChairs : MonoBehaviour
         else if (roll.Contains(GhostDirector.ChairHuntId))
             Hunt();
         else if (roll.Contains(GhostDirector.ChairPileId))
-            Pile();
+            ShowDesk();
     }
 
     void Collect()
@@ -40,35 +47,64 @@ public class HouseChairs : MonoBehaviour
             return;
 
         m_Collected = true;
+        m_Desk = FindExact("Chair_desk");
+        m_Flow = FindExact("Chair_flow");
+        HideGroups();
+
         GameObject group = GameObject.Find("Chairs");
-        Transform[] all = FindObjectsOfType<Transform>();
-        for (int i = 0; i < all.Length; i++)
+        if (group != null)
+            TakeChairs(group.transform, true, false);
+        if (m_Flow != null)
+            TakeChairs(m_Flow, false, true);
+    }
+
+    void TakeChairs(Transform root, bool hunter, bool floater)
+    {
+        Transform[] chairs = root.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < chairs.Length; i++)
         {
-            Transform chair = all[i];
-            if (chair == null || chair.GetComponent<Renderer>() == null)
+            Transform chair = chairs[i];
+            if (chair == null || chair == root || chair.GetComponent<Renderer>() == null)
                 continue;
-            if (chair.name.IndexOf("Chair", System.StringComparison.OrdinalIgnoreCase) < 0)
-                continue;
-            if (chair.GetComponentInParent<HouseChairs>() != null)
+
+            if (chair.parent != root)
                 continue;
 
             Seat seat = new Seat();
             seat.transform = chair;
             seat.position = chair.position;
             seat.rotation = chair.rotation;
-            seat.hunter = group != null && chair.parent == group.transform;
+            seat.hunter = hunter;
+            seat.floater = floater;
             m_Seats.Add(seat);
         }
     }
 
-    void Restore()
+    static Transform FindExact(string objectName)
     {
-        if (m_Pile != null)
+        Transform[] all = FindObjectsOfType<Transform>(true);
+        for (int i = 0; i < all.Length; i++)
         {
-            Destroy(m_Pile);
-            m_Pile = null;
+            Transform node = all[i];
+            if (node == null || !node.gameObject.scene.IsValid())
+                continue;
+            if (string.Equals(node.name, objectName, System.StringComparison.OrdinalIgnoreCase))
+                return node;
         }
 
+        return null;
+    }
+
+    void HideGroups()
+    {
+        if (m_Desk != null)
+            m_Desk.gameObject.SetActive(false);
+        if (m_Flow != null)
+            m_Flow.gameObject.SetActive(false);
+    }
+
+    void Restore()
+    {
         for (int i = 0; i < m_Seats.Count; i++)
         {
             Seat seat = m_Seats[i];
@@ -88,55 +124,21 @@ public class HouseChairs : MonoBehaviour
             seat.bodyWasOurs = false;
             seat.transform.SetPositionAndRotation(seat.position, seat.rotation);
         }
+
+        HideGroups();
     }
 
-    void Pile()
+    void ShowDesk()
     {
-        GameObject source = chairPrefab;
-        Transform template = Template();
-        if (source == null && template != null)
-            source = template.gameObject;
-        if (source == null)
+        if (m_Desk == null)
             return;
 
-        Vector3 near = AverageHunters();
-        Transform table = NearestTable(near);
-        if (table == null)
-            return;
-
-        Bounds bounds = TableBounds(table);
-        m_Pile = new GameObject("ChairPile");
-        Vector3 scale = template != null ? template.lossyScale : Vector3.one;
-        const int columns = 4;
-        const int count = 12;
-        for (int i = 0; i < count; i++)
+        m_Desk.gameObject.SetActive(true);
+        Renderer[] shown = m_Desk.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < shown.Length; i++)
         {
-            int column = i % columns;
-            int row = i / columns;
-            float u = column / (float)(columns - 1);
-            float v = (row % 3) / 2f;
-            float x = Mathf.Lerp(bounds.min.x, bounds.max.x, Mathf.Lerp(0.16f, 0.84f, u));
-            float z = Mathf.Lerp(bounds.min.z, bounds.max.z, Mathf.Lerp(0.2f, 0.8f, v));
-            float y = bounds.max.y + 0.02f + (row >= 2 ? 0.5f : 0f);
-            Quaternion rotation = Quaternion.Euler(0f, (i * 47f) % 360f, 0f);
-            GameObject copy = Instantiate(source, new Vector3(x, y, z), rotation, m_Pile.transform);
-            copy.name = "TableChair";
-            Transform[] nodes = copy.GetComponentsInChildren<Transform>(true);
-            for (int n = 0; n < nodes.Length; n++)
-                nodes[n].gameObject.isStatic = false;
-            copy.transform.localScale = scale;
-            Renderer[] shown = copy.GetComponentsInChildren<Renderer>(true);
-            for (int r = 0; r < shown.Length; r++)
-            {
-                if (shown[r] != null)
-                    shown[r].enabled = true;
-            }
-            EnsureSolid(copy, null);
-            Rigidbody body = copy.GetComponent<Rigidbody>();
-            if (body == null)
-                body = copy.AddComponent<Rigidbody>();
-            body.isKinematic = true;
-            body.useGravity = false;
+            if (shown[i] != null)
+                shown[i].enabled = true;
         }
     }
 
@@ -166,10 +168,13 @@ public class HouseChairs : MonoBehaviour
 
     void FloatAll()
     {
+        if (m_Flow != null)
+            m_Flow.gameObject.SetActive(true);
+
         for (int i = 0; i < m_Seats.Count; i++)
         {
             Seat seat = m_Seats[i];
-            if (seat.transform == null)
+            if (!seat.floater || seat.transform == null)
                 continue;
 
             GameObject chair = seat.transform.gameObject;
@@ -179,9 +184,7 @@ public class HouseChairs : MonoBehaviour
             body.drag = 0.15f;
             body.angularDrag = 0.2f;
             body.constraints = RigidbodyConstraints.None;
-            Vector3 position = seat.position;
-            position.y += Random.Range(0.45f, 2.5f);
-            seat.transform.position = position;
+            seat.transform.SetPositionAndRotation(seat.position, seat.rotation);
             body.velocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
         }
@@ -194,114 +197,6 @@ public class HouseChairs : MonoBehaviour
         if (flat.sqrMagnitude < 0.01f)
             return;
         chair.rotation = Quaternion.LookRotation(flat.normalized, Vector3.up);
-    }
-
-    Transform Template()
-    {
-        for (int i = 0; i < m_Seats.Count; i++)
-        {
-            if (m_Seats[i].hunter && m_Seats[i].transform != null)
-                return m_Seats[i].transform;
-        }
-
-        for (int i = 0; i < m_Seats.Count; i++)
-        {
-            if (m_Seats[i].transform != null)
-                return m_Seats[i].transform;
-        }
-
-        return null;
-    }
-
-    Vector3 AverageHunters()
-    {
-        Vector3 sum = Vector3.zero;
-        int count = 0;
-        for (int i = 0; i < m_Seats.Count; i++)
-        {
-            if (!m_Seats[i].hunter || m_Seats[i].transform == null)
-                continue;
-            sum += m_Seats[i].position;
-            count++;
-        }
-
-        return count > 0 ? sum / count : transform.position;
-    }
-
-    static Transform NearestTable(Vector3 near)
-    {
-        Transform[] nodes = FindObjectsOfType<Transform>();
-        Transform best = null;
-        float bestDistance = float.MaxValue;
-        for (int i = 0; i < nodes.Length; i++)
-        {
-            Transform node = nodes[i];
-            if (node == null || !IsDiningTable(node))
-                continue;
-
-            Vector3 point = node.position;
-            Collider body = node.GetComponent<Collider>();
-            if (body != null)
-                point = body.bounds.center;
-            float distance = Flat(point, near);
-            if (distance < bestDistance)
-            {
-                bestDistance = distance;
-                best = node;
-            }
-        }
-
-        return best;
-    }
-
-    static bool IsDiningTable(Transform node)
-    {
-        string name = node.name;
-        if (name.IndexOf("Bedside", System.StringComparison.OrdinalIgnoreCase) >= 0)
-            return false;
-        if (name.IndexOf("Chair", System.StringComparison.OrdinalIgnoreCase) >= 0)
-            return false;
-        return name.IndexOf("Dinning", System.StringComparison.OrdinalIgnoreCase) >= 0
-            || name.IndexOf("Dining_Table", System.StringComparison.OrdinalIgnoreCase) >= 0
-            || name.IndexOf("DiningTable", System.StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
-    static Bounds TableBounds(Transform table)
-    {
-        Collider body = table.GetComponent<Collider>();
-        if (body != null)
-            return body.bounds;
-
-        Renderer renderer = table.GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            MeshFilter filter = table.GetComponent<MeshFilter>();
-            if (filter != null && filter.sharedMesh != null && filter.sharedMesh.name.IndexOf("Combined Mesh") < 0)
-                return TransformBounds(table, filter.sharedMesh.bounds);
-            return renderer.bounds;
-        }
-
-        return new Bounds(table.position, new Vector3(2f, 0.7f, 1f));
-    }
-
-    static Bounds TransformBounds(Transform space, Bounds local)
-    {
-        Vector3 center = space.TransformPoint(local.center);
-        Vector3 extent = local.extents;
-        Vector3 axisX = space.TransformVector(extent.x, 0f, 0f);
-        Vector3 axisY = space.TransformVector(0f, extent.y, 0f);
-        Vector3 axisZ = space.TransformVector(0f, 0f, extent.z);
-        extent.x = Mathf.Abs(axisX.x) + Mathf.Abs(axisY.x) + Mathf.Abs(axisZ.x);
-        extent.y = Mathf.Abs(axisX.y) + Mathf.Abs(axisY.y) + Mathf.Abs(axisZ.y);
-        extent.z = Mathf.Abs(axisX.z) + Mathf.Abs(axisY.z) + Mathf.Abs(axisZ.z);
-        return new Bounds(center, extent * 2f);
-    }
-
-    static float Flat(Vector3 a, Vector3 b)
-    {
-        a.y = 0f;
-        b.y = 0f;
-        return Vector3.Distance(a, b);
     }
 
     static Collider EnsureSolid(GameObject chair, Seat seat)
@@ -460,29 +355,15 @@ public class ChairStalker : MonoBehaviour
         if (camera == null)
             return false;
 
-        Collider body = GetComponent<Collider>();
-        Bounds bounds = body != null
-            ? body.bounds
-            : new Bounds(transform.position + Vector3.up * 0.55f, new Vector3(0.5f, 1.1f, 0.45f));
-        Vector3[] points =
+        Vector3 point = transform.position + Vector3.up * 0.55f;
+        Collider own = GetComponent<Collider>();
+        if (own != null)
         {
-            bounds.center,
-            bounds.center + new Vector3(bounds.extents.x * 0.6f, 0f, 0f),
-            bounds.center - new Vector3(bounds.extents.x * 0.6f, 0f, 0f),
-            bounds.center + new Vector3(0f, bounds.extents.y * 0.55f, 0f),
-            bounds.center + new Vector3(0f, 0f, bounds.extents.z * 0.6f)
-        };
-        for (int i = 0; i < points.Length; i++)
-        {
-            if (PointInView(camera, points[i]))
-                return true;
+            Vector3 size = own.bounds.size;
+            if (size.x < 2.2f && size.y < 2.2f && size.z < 2.2f)
+                point = own.bounds.center;
         }
 
-        return false;
-    }
-
-    bool PointInView(Camera camera, Vector3 point)
-    {
         Vector3 view = camera.WorldToViewportPoint(point);
         if (view.z <= 0.05f || view.x < 0f || view.x > 1f || view.y < 0f || view.y > 1f)
             return false;
@@ -497,9 +378,10 @@ public class ChairStalker : MonoBehaviour
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
         for (int i = 0; i < hits.Length; i++)
         {
-            if (hits[i].collider.GetComponentInParent<PlayerMovement>() != null)
+            Collider hit = hits[i].collider;
+            if (hit == null || hit.GetComponentInParent<PlayerMovement>() != null)
                 continue;
-            return hits[i].collider.transform == transform || hits[i].collider.transform.IsChildOf(transform);
+            return hit.transform == transform || hit.transform.IsChildOf(transform);
         }
 
         return true;

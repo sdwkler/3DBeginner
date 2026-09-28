@@ -14,6 +14,7 @@ public class GameEnding : MonoBehaviour
 
     bool m_IsPlayerAtExit;
     bool m_IsPlayerCaught;
+    bool m_Restarting;
     float m_Timer;
 
     void OnTriggerEnter(Collider other)
@@ -49,8 +50,13 @@ public class GameEnding : MonoBehaviour
 
         if (m_Timer > fadeDuration + displayImageDuration)
         {
-            if(doRestart)
+            if (doRestart)
             {
+                if (m_Restarting)
+                    return;
+
+                m_Restarting = true;
+                Time.timeScale = 1f;
                 SceneManager.LoadScene(SceneManager.GetActiveScene().name);
             }
             else

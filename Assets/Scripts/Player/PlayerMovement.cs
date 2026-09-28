@@ -15,6 +15,7 @@ public class PlayerMovement : MonoBehaviour
     public float minPitch = -35f;
     public float maxPitch = 60f;
     public float lookSensitivity = 3f;
+    public float runMultiplier = 2f;
     public bool controlsLocked;
 
     Animator m_Animator;
@@ -78,7 +79,10 @@ public class PlayerMovement : MonoBehaviour
     {
         m_Movement = Vector3.zero;
         if (m_Animator != null)
+        {
             m_Animator.SetBool("IsWalking", false);
+            m_Animator.speed = 1f;
+        }
         if (m_Rigidbody != null)
         {
             m_Rigidbody.velocity = Vector3.zero;
@@ -128,7 +132,10 @@ public class PlayerMovement : MonoBehaviour
         {
             m_Movement = Vector3.zero;
             if (m_Animator != null)
+            {
                 m_Animator.SetBool("IsWalking", false);
+                m_Animator.speed = 1f;
+            }
             m_Rotation = transform.rotation;
             return;
         }
@@ -150,6 +157,8 @@ public class PlayerMovement : MonoBehaviour
         if (m_Movement.sqrMagnitude > 0f)
             m_Movement.Normalize();
 
+        bool running = isWalking && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
+        m_Animator.speed = running ? Mathf.Max(1f, runMultiplier) : 1f;
         m_Animator.SetBool("IsWalking", isWalking);
 
         if (isWalking)
